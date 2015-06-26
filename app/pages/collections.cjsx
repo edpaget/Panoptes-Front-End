@@ -58,7 +58,7 @@ CollectionsPage = React.createClass
   render: ->
     <OwnedCardList
       translationObjectName="collectionsPage"
-      listPromise={@listCollections()}
+      listPromise={@listCollections}
       linkTo="collections"
       heroNav={<CollectionsNav />}
       heroClass="collections-hero"

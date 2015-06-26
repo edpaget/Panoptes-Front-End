@@ -8,6 +8,7 @@
     "debounce": "~1.0.0",
     "json-api-client": "~0.3.2",
     "lodash.merge": "~2.4.1",
+    "lodash.uniq": "^3.2.1",
     "markdown-it": "~4.0.1",
     "markdown-it-container": "~1.0.0",
     "markdown-it-emoji": "~1.0.0",
@@ -21,6 +22,7 @@
     "react-router": "~0.13.2",
     "react-select": "edpaget/react-select#close-after-click",
     "react-translate-component": "~0.9.0",
+    "react-waypoint": "^1.0.1",
     "tether": "HubSpot/tether#df8cd44"
   },
   "devDependencies": {

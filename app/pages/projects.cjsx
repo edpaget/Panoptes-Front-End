@@ -3,6 +3,7 @@ React = require 'react'
 TitleMixin = require '../lib/title-mixin'
 apiClient = require '../api/client'
 OwnedCardList = require '../components/owned-card-list'
+PagedResource = require '../lib/paged-resource'
 
 counterpart.registerTranslations 'en',
   projectsPage:
@@ -18,13 +19,12 @@ module.exports = React.createClass
 
   title: 'Projects'
 
-  listProjects: ->
+  projects: ->
     query =
       launch_approved: true
       include:'owners,avatar'
-    Object.assign query, @props.query
 
-    apiClient.type('projects').get query
+    new PagedResource('projects', 1, query)
 
   imagePromise: (project) ->
     project.get('avatar')
@@ -41,7 +41,7 @@ module.exports = React.createClass
   render: ->
     <OwnedCardList
       translationObjectName="projectsPage"
-      listPromise={@listProjects()}
+      pagedResource={@projects()}
       linkTo="projects"
       cardLink={@cardLink}
       heroClass="projects-hero"

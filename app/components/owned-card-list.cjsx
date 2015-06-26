@@ -6,13 +6,18 @@ apiClient = require '../api/client'
 PromiseRenderer = require '../components/promise-renderer'
 OwnedCard = require '../partials/owned-card'
 {Link} = require 'react-router'
+Waypoint = require 'react-waypoint'
+PromiseToSetState = require '../lib/promise-to-set-state'
+uniq = require 'lodash.uniq'
 
 module.exports = React.createClass
   displayName: 'OwnedCardList'
 
+  mixins: [PromiseToSetState]
+
   propTypes:
     imagePromise: React.PropTypes.func.isRequired
-    listPromise: React.PropTypes.object.isRequired
+    pagedResource: React.PropTypes.object.isRequired
     cardLink: React.PropTypes.func.isRequired
     translationObjectName: React.PropTypes.string.isRequired
     ownerName: React.PropTypes.string
@@ -21,6 +26,7 @@ module.exports = React.createClass
 
   componentDidMount: ->
     document.documentElement.classList.add 'on-secondary-page'
+    @fetchResources()
 
   componentWillUnmount: ->
     document.documentElement.classList.remove 'on-secondary-page'
@@ -31,8 +37,26 @@ module.exports = React.createClass
     else
       'All'
 
+  getInitialState: ->
+    ownedResources: []
+
+  fetchResources: ->
+    unless @state.pending.ownedResources?
+      ownedResources = @props.pagedResource.getNextPage().then (resources) =>
+        console.log(resources)
+        uniq(@state.ownedResources.concat(resources), (p) -> p.id)
+      @promiseToSetState {ownedResources} 
+
+  renderCards: ->
+    for resource in @state.ownedResources
+      <OwnedCard
+        key={"project-#{resource.id}"}
+        resource={resource}
+        imagePromise={@props.imagePromise(resource)}
+        linkTo={@props.cardLink(resource)}
+        translationObjectName={@props.translationObjectName}/>
+ 
   render: ->
-    
     <div className="secondary-page all-resources-page">
       <section className={"hero #{@props.heroClass}"}>
         <div className="hero-container">
@@ -42,38 +66,16 @@ module.exports = React.createClass
         </div>
       </section>
       <section className="resources-container">
-        <PromiseRenderer promise={@props.listPromise}>{(ownedResources) =>
-          if ownedResources?.length > 0
-            meta = ownedResources[0].getMeta()
-            <div>
-              <div className="resource-results-counter">
-                {if meta
-                  pageStart = meta.page * meta.page_size - meta.page_size + 1
-                  pageEnd = Math.min(meta.page * meta.page_size, meta.count)
-                  count = meta.count
-                  <Translate pageStart={pageStart} pageEnd={pageEnd} count={count} content="#{@props.translationObjectName}.countMessage" component="p" />}
-              </div>
-              <div className="card-list">
-                {for resource in ownedResources
-                   <OwnedCard
-                     key={resource.id}
-                     resource={resource}
-                     imagePromise={@props.imagePromise(resource)}
-                     linkTo={@props.cardLink(resource)}
-                     translationObjectName={@props.translationObjectName}/>}
-              </div>
-              <nav>
-                {if meta
-                  <nav className="pagination">
-                    {for page in [1..meta.page_count]
-                      <Link to={@props.linkTo} query={{page}} key={page} className="pill-button" style={border: "2px solid" if page is 1 and window.location.hash is "#/#{@props.linkTo}"}>{page}</Link>}
-                  </nav>}
-              </nav>
-            </div>
-          else if ownedResources?.length is 0
-            <Translate content="#{@props.translationObjectName}.notFoundMessage" component="div" />
-          else
-            <Translate content="#{@props.translationObjectName}.loadMessage" component="div" />
-        }</PromiseRenderer>
+        <div>
+          {if @state.ownedResources?.length > 0
+             <div className="card-list">
+               {@renderCards()}
+               <Waypoint onEnter={@fetchResources} threshold={0.1}} />
+             </div>
+           else if @state.pending.ownedResources?
+             <Translate content="#{@props.translationObjectName}.loadMessage" component="div" />
+           else 
+             <Translate content="#{@props.translationObjectName}.notFoundMessage" component="div" />}
+        </div>
       </section>
     </div>
