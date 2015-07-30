@@ -13,13 +13,16 @@ module?.exports = React.createClass
 
   render: ->
     <div className="talk-subject-display">
-      <PromiseRenderer promise={apiClient.type('subjects').get(@props.focusId.toString())}>{(subject) =>
+      <PromiseRenderer promise={apiClient.type('subjects').get(@props.focusId)}>{(subject) =>
         <div>
           <a href={getSubjectLocation(subject).src} target="_blank">
             <img src={getSubjectLocation(subject).src} />
           </a>
           <p>Subject {subject.id}</p>
-          <FavoritesButton subject={subject} />
+
+          {if @props.user?
+            <FavoritesButton subject={subject} user={user} />}
+
         </div>
       }</PromiseRenderer>
     </div>

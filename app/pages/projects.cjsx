@@ -7,7 +7,7 @@ OwnedCardList = require '../components/owned-card-list'
 counterpart.registerTranslations 'en',
   projectsPage:
     title: 'All Projects'
-    countMessage: 'Showing %(count)s found'
+    countMessage: 'Showing %(pageStart)s-%(pageEnd)s of %(count)s found'
     button: 'Get Started'
     notFoundMessage: 'Sorry, no projects found'
 
@@ -20,8 +20,9 @@ module.exports = React.createClass
 
   listProjects: ->
     query =
-      launch_approved: true
-      include:'owners,avatar'
+      include:'avatar'
+    if !apiClient.params.admin
+      query.launch_approved = true
     Object.assign query, @props.query
 
     apiClient.type('projects').get query
@@ -30,11 +31,19 @@ module.exports = React.createClass
     project.get('avatar')
       .then (avatar) -> avatar.src
 
+  cardLink: (project) ->
+    link = if !!project.redirect
+      project.redirect
+    else
+      'project-home'
+
+    return link
+
   render: ->
     <OwnedCardList
       translationObjectName="projectsPage"
       listPromise={@listProjects()}
       linkTo="projects"
-      cardLink="project-home"
+      cardLink={@cardLink}
       heroClass="projects-hero"
       imagePromise={@imagePromise} />

@@ -12,6 +12,7 @@ module.exports = React.createClass
   displayName: 'SubjectViewer' # TODO: Rename this.
 
   getDefaultProps: ->
+    project: null
     classification: null
     workflow: null
     annotation: null
@@ -29,10 +30,13 @@ module.exports = React.createClass
 
   componentDidMount: ->
     addEventListener 'resize', @handleResize
+    addEventListener 'scroll', @handleResize
+    @setState alreadySeen: @props.subject.already_seen or seenThisSession.check @props.workflow, @props.subject
 
   componentWillUnmount: ->
     removeEventListener 'resize', @handleResize
-    
+    removeEventListener 'scroll', @handleResize
+
   getScale: ->
     ALMOST_ZERO = 0.01 # Prevent divide-by-zero errors when there is no image.
     rect = @state.sizeRect
@@ -46,7 +50,7 @@ module.exports = React.createClass
     x = (e.pageX - pageXOffset - rect.left) / scale.horizontal
     y = (e.pageY - pageYOffset - rect.top) / scale.vertical
     {x, y}
-  
+
   getDetailsTooltipProps: ->
     sizeRect = @state.sizeRect
     toolRect = @state.toolRect
@@ -79,8 +83,11 @@ module.exports = React.createClass
     setTimeout (=> @refs.detailsTooltip?.forceUpdate()), 100
 
   render: ->
+    currentTaskDescription = @props.workflow.tasks[@props.annotation?.task]
+    currentTaskComponent = tasks[currentTaskDescription?.type]
+
     <div className="subject-area">
-      <SubjectViewer subject={@props.subject} frame={@state.frame} onLoad={@handleSubjectFrameLoad} onFrameChange={@handleFrameChange}>
+      <SubjectViewer user={@props.user} project={@props.project} subject={@props.subject} frame={@state.frame} onLoad={@handleSubjectFrameLoad} onFrameChange={@handleFrameChange}>
         <svg viewBox={"0 0 #{@state.naturalWidth} #{@state.naturalHeight}"} preserveAspectRatio="none" style={SubjectViewer.overlayStyle}>
           <rect ref="sizeRect" width="100%" height="100%" fill="rgba(0, 0, 0, 0.01)" fillOpacity="0.01" stroke="none" />
 
@@ -99,6 +106,7 @@ module.exports = React.createClass
                   mark._key ?= Math.random()
                   toolDescription = taskDescription.tools[mark.tool]
                   toolEnv =
+                    containerRect: @state.sizeRect
                     scale: @getScale()
                     disabled: isPriorAnnotation
                     selected: mark is @state.selectedMark
@@ -119,7 +127,7 @@ module.exports = React.createClass
               </g>}
         </svg>
 
-        {if @props.subject.already_seen or seenThisSession.check @props.workflow, @props.subject
+        {if @state.alreadySeen 
           <button type="button" className="warning-banner" onClick={@toggleWarning}>
             Already seen!
             {if @state.showWarning
@@ -153,7 +161,38 @@ module.exports = React.createClass
               </div>
             </Tooltip>}
       </SubjectViewer>
+
+      {if currentTaskComponent is tasks.survey
+        @renderSurveyAnnotation()}
     </div>
+
+  renderSurveyAnnotation: ->
+    taskDescription = @props.workflow.tasks[@props.annotation?.task]
+
+    <div>
+      {for identification, i in @props.annotation.value
+        identification._key ?= Math.random()
+
+        answersByQuestion = taskDescription.questionsOrder.map (questionID) ->
+          if questionID of identification.answers
+            answerLabels = [].concat(identification.answers[questionID]).map (answerID) ->
+              taskDescription.questions[questionID].answers[answerID].label
+            answerLabels.join ', '
+        answersList = answersByQuestion.filter(Boolean).join '; '
+
+        <span key={identification._key}>
+          <span className="survey-identification-proxy" title={answersList}>
+            {taskDescription.choices[identification.choice].label}
+            {' '}
+            <button type="button" className="survey-identification-remove" title="Remove" onClick={@handleSurveyAnnotationRemoval}>&times;</button>
+          </span>
+          {' '}
+        </span>}
+    </div>
+
+  handleSurveyAnnotationRemoval: (index) ->
+    @props.annotation.value.splice index, 1
+    @updateAnnotations()
 
   handleSubjectFrameLoad: (e) ->
     if e.target.tagName.toUpperCase() is 'IMG'
@@ -162,7 +201,7 @@ module.exports = React.createClass
         @handleResize()
       else
         @setState {naturalWidth, naturalHeight}, @handleResize
-      @props.onLoad? arguments...
+      @props.onLoad? e, @state.frame
 
   handleFrameChange: (frame) ->
     @setState {frame}

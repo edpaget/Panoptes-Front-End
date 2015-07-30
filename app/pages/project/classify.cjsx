@@ -88,7 +88,7 @@ module.exports = React.createClass
       currentWorkflowForProject[props.project.id]
 
   getRandomWorkflowID: (project) ->
-    project.get('workflows').then (workflows) ->
+    project.get('workflows', active: true).then (workflows) ->
       if workflows.length is 0
         throw new Error "No workflows for project #{project.id}"
         project.uncacheLink 'workflows'
@@ -121,6 +121,7 @@ module.exports = React.createClass
           user_agent: navigator.userAgent
           user_language: counterpart.getLocale()
           utc_offset: ((new Date).getTimezoneOffset() * 60).toString() # In seconds
+          subject_dimensions: (null for location in subject.locations)
         links:
           project: project.id
           workflow: workflow.id
@@ -223,12 +224,11 @@ module.exports = React.createClass
       @maybePromptToSignIn()
 
   maybePromptToSignIn: ->
-    auth.checkCurrent().then (user) =>
-      if classificationsThisSession in PROMPT_TO_SIGN_IN_AFTER and not user?
-        alert (resolve) =>
-          <SignInPrompt project={@props.project} onChoose={resolve}>
-            <p><strong>You’ve done {classificationsThisSession} classifications, but you’re not signed in!</strong></p>
-          </SignInPrompt>
+    if classificationsThisSession in PROMPT_TO_SIGN_IN_AFTER and not @props.user?
+      alert (resolve) =>
+        <SignInPrompt project={@props.project} onChoose={resolve}>
+          <p><strong>You’ve done {classificationsThisSession} classifications, but you’re not signed in!</strong></p>
+        </SignInPrompt>
 
   loadAnotherSubject: ->
     @getCurrentWorkflowID(@props).then (workflowID) =>

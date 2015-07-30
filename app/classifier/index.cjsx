@@ -28,6 +28,8 @@ Classifier = React.createClass
     onLoad: NOOP
 
   propChangeHandlers:
+    subject: ->
+      @setState subjectLoading: true
     classification: (classification) ->
       window.classification = classification
       setTimeout =>
@@ -36,6 +38,7 @@ Classifier = React.createClass
           @addAnnotationForTask @props.workflow.first_task
 
   getInitialState: ->
+    subjectLoading: false
     showingExpertClassification: false
     selectedExpertAnnotation: -1
 
@@ -51,7 +54,7 @@ Classifier = React.createClass
         currentTask = @props.workflow.tasks[currentAnnotation?.task]
 
       <div className="classifier">
-        <SubjectViewer subject={@props.subject} workflow={@props.workflow} classification={currentClassification} annotation={currentAnnotation} onLoad={@handleSubjectImageLoad} />
+        <SubjectViewer user={@props.user} project={@props.project} subject={@props.subject} workflow={@props.workflow} classification={currentClassification} annotation={currentAnnotation} onLoad={@handleSubjectImageLoad} />
 
         <div className="task-area">
           {if currentTask?
@@ -72,7 +75,11 @@ Classifier = React.createClass
             else if @props.workflow.tasks[currentTask.next]?
               currentTask.next
 
-            <div className="task-container">
+            disabledStyle =
+              opacity: 0.5
+              pointerEvents: 'none'
+
+            <div className="task-container" style={disabledStyle if @state.subjectLoading}>
               <TaskComponent task={currentTask} annotation={currentAnnotation} onChange={@updateAnnotations.bind this, currentClassification} />
 
               <hr />
@@ -115,12 +122,21 @@ Classifier = React.createClass
 
       <nav className="task-nav">
         {if @props.owner? and @props.project?
-          <Link to="project-talk-subject" params={owner: @props.owner.login, name: @props.project.slug, id: @props.subject.id} className="talk standard-button">Talk</Link>}
+          <Link onClick={@props.onClickNext} to="project-talk-subject" params={owner: @props.owner.login, name: @props.project.slug, id: @props.subject.id} className="talk standard-button">Talk</Link>}
         <button type="button" className="continue major-button" onClick={@props.onClickNext}>Next</button>
       </nav>
     </div>
 
-  handleSubjectImageLoad: (e) ->
+  handleSubjectImageLoad: (e, frameIndex) ->
+    @setState subjectLoading: false
+
+    {naturalWidth, naturalHeight, clientWidth, clientHeight} = e.target
+
+    changes = {}
+    changes["metadata.subject_dimensions.#{frameIndex}"] = {naturalWidth, naturalHeight, clientWidth, clientHeight}
+
+    @props.classification.update changes
+
     @props.onLoad? arguments...
 
   updateAnnotations: (classification) ->
@@ -130,12 +146,12 @@ Classifier = React.createClass
   checkToolChange: (classification) ->
     lastAnnotationIndex = classification.annotations.length - 1
     lastAnnotation = classification.annotations[lastAnnotationIndex]
+    if @props.workflow.tasks[lastAnnotation.task].type is 'drawing'
+      toolIdentifier = "#{lastAnnotationIndex}-#{lastAnnotation._toolIndex}"
 
-    toolIdentifier = "#{lastAnnotationIndex}-#{lastAnnotation._toolIndex}"
-
-    if Array.isArray(lastAnnotation.value) and toolIdentifier isnt @_lastAnnotationAndTool
-      @handleToolChange lastAnnotation, @_lastAnnotationAndTool.split('-').pop() ? '-1'
-      @_lastAnnotationAndTool = toolIdentifier
+      if Array.isArray(lastAnnotation.value) and toolIdentifier isnt @_lastAnnotationAndTool
+        @handleToolChange lastAnnotation, @_lastAnnotationAndTool.split('-').pop() ? '-1'
+        @_lastAnnotationAndTool = toolIdentifier
 
   handleToolChange: (annotation, oldToolIndex) ->
     lastMark = annotation.value[annotation.value.length - 1]
@@ -160,6 +176,10 @@ Classifier = React.createClass
     @props.classification.update
       completed: true
       'metadata.finished_at': (new Date).toISOString()
+      'metadata.viewport':
+        width: innerWidth
+        height: innerHeight
+
     @props.onComplete?()
 
   toggleExpertClassification: (value) ->

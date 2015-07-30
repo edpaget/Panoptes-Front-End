@@ -2,15 +2,13 @@ React = require 'react'
 talkClient = require '../api/talk'
 apiClient = require '../api/client'
 PromiseRenderer = require '../components/promise-renderer'
+parseSection = require './lib/parse-section'
+talkConfig = require './config'
 {Link, Navigation} = require 'react-router'
 
-PAGE_SIZE = 3
+PAGE_SIZE = talkConfig.discussionPageSize
 
-getPageOfComment = (comment, discussion, pageSize) ->
-  # comment resource, discussion resource, integer
-  comments = discussion.links.comments
-  commentNumber = comments.indexOf(comment.id.toString()) + 1
-  Math.ceil commentNumber / pageSize
+getPageOfComment = require './lib/get-page-of-comment'
 
 module?.exports = React.createClass
   displayName: 'TalkCommentLink'
@@ -31,7 +29,7 @@ module?.exports = React.createClass
 
   setDiscussion: ->
     {comment} = @props
-    talkClient.type('discussions').get(comment.discussion_id.toString(), {})
+    talkClient.type('discussions').get(comment.discussion_id, {sort_linked_comments: 'created_at'})
       .then (discussion) => @setState {discussion}
 
   projectComment: ->
@@ -46,8 +44,9 @@ module?.exports = React.createClass
         pageOfComment = getPageOfComment(comment, discussion, PAGE_SIZE)
 
         if @projectComment()
-          projectId = discussion.section.split('-')[0]
+          projectId = parseSection(discussion.section)
           project = apiClient.type('projects').get(projectId)
+
           owner = project.then (project) => project.get('owner')
 
           <PromiseRenderer promise={Promise.all [project, owner]}>{([project, owner]) =>

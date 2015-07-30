@@ -9,7 +9,6 @@ CommentLink = require './comment-link'
 upvotedByCurrentUser = require './lib/upvoted-by-current-user'
 CommentPreview = require './comment-preview'
 PromiseRenderer = require '../components/promise-renderer'
-PromiseToSetState = require '../lib/promise-to-set-state'
 {Link} = require 'react-router'
 {timestamp} = require './lib/time'
 apiClient = require '../api/client'
@@ -17,20 +16,22 @@ talkClient = require '../api/talk'
 Avatar = require '../partials/avatar'
 SubjectViewer = require '../components/subject-viewer'
 DisplayRoles = require './lib/display-roles'
+merge = require 'lodash.merge'
 
 DEFAULT_AVATAR = './assets/simple-avatar.jpg'
 
 module?.exports = React.createClass
   displayName: 'TalkComment'
-  mixins: [ToggleChildren, Feedback, PromiseToSetState]
+  mixins: [ToggleChildren, Feedback]
 
   propTypes:
-    data: React.PropTypes.object
+    data: React.PropTypes.object # Comment resource
     onUpdateComment: React.PropTypes.func # passed (textContent, subject, commentId) on update submit
     onDeleteComment: React.PropTypes.func # passed (commentId) on click
     onLikeComment: React.PropTypes.func # passed (commentId) on like
     onClickReply: React.PropTypes.func # passed (user, comment) on click
     active: React.PropTypes.bool  # optional active switch: scroll window to comment and apply styling
+    user: React.PropTypes.object  # Current user
 
   getDefaultProps: ->
     active: false
@@ -44,7 +45,8 @@ module?.exports = React.createClass
       React.findDOMNode(@).scrollIntoView()
 
   onClickReply: (e) ->
-    @props.onClickReply(@props.user, @props.data)
+    apiClient.type('users').get(id: @props.data.user_id).index(0).then (commentOwner) =>
+      @props.onClickReply(commentOwner, @props.data)
 
   onClickLink: (e) ->
     @toggleComponent('link')
@@ -63,13 +65,12 @@ module?.exports = React.createClass
     @setState editing: false
 
   onSubmitComment: (e, textContent, subject) ->
-    # update comment here...
     @props.onUpdateComment?(textContent, subject, @props.data.id)
-    @setState editing: false
-    @setFeedback "Comment Updated"
+      .then =>
+        @setState editing: false
+        @setFeedback "Comment Updated"
 
   commentValidations: (commentBody) ->
-    console.log "validating comment", commentBody
     commentValidationErrors = getErrors(commentBody, commentValidations)
     @setState {commentValidationErrors}
     !!commentValidationErrors.length
@@ -79,6 +80,17 @@ module?.exports = React.createClass
 
   upvoteCount: ->
     Object.keys(@props.data.upvotes).length
+
+  commentSubjectTitle: (comment, subject) ->
+    {owner, name} = @props.params
+    if (comment.focus_type is 'Subject') and (owner and name)
+      <Link
+        to="project-talk-subject"
+        params={merge {id: comment.focus_id}, {owner, name}}>
+        Subject {subject.id}
+      </Link>
+    else
+      <span>Subject {subject.id}</span>
 
   render: ->
     feedback = @renderFeedback()
@@ -92,9 +104,10 @@ module?.exports = React.createClass
 
         <p>
           <Link to="user-profile" params={name: @props.data.user_login}>{@props.data.user_display_name}</Link>
+          <div className="user-mention-name">@{@props.data.user_login}</div>
         </p>
 
-        <PromiseRenderer promise={talkClient.type('roles').get(user_id: @props.data.user_id, section: ['zooniverse', @props.data.section])}>{(roles) =>
+        <PromiseRenderer promise={talkClient.type('roles').get(user_id: @props.data.user_id, section: ['zooniverse', @props.data.section], is_shown: true, page_size: 100)}>{(roles) =>
           <DisplayRoles roles={roles} section={@props.data.section} />
         }</PromiseRenderer>
       </div>
@@ -109,12 +122,12 @@ module?.exports = React.createClass
             {if @props.data.focus_id
               <PromiseRenderer
                 promise={
-                  apiClient.type('subjects').get(@props.data.focus_id.toString())
+                  apiClient.type('subjects').get(@props.data.focus_id)
                 }
                 then={(subject) =>
                   <div className="polaroid-image">
-                    Subject {subject.id}
-                    <SubjectViewer subject={subject} />
+                    {@commentSubjectTitle(@props.data, subject)}
+                    <SubjectViewer subject={subject} user={@props.user} />
                   </div>
                 }
                 catch={null}
@@ -137,9 +150,8 @@ module?.exports = React.createClass
               <button className="talk-comment-link-button" onClick={@onClickLink}>
                 <i className="fa fa-link" /> Link
               </button>
-              <button className="talk-comment-report-button" onClick={@onClickReport}>
-                <i className="fa fa-warning" /> Report
-              </button>
+              {if @props.user?
+                <button className="talk-comment-report-button" onClick={@onClickReport}><i className="fa fa-warning" /> Report</button>}
               {if +@props.data?.user_id is +@props.user?.id
                 <span>
                   <button className="talk-comment-edit-button" onClick={@onClickEdit}>
@@ -154,7 +166,7 @@ module?.exports = React.createClass
             <div className="talk-comment-children">
               {switch @state.showing
                  when 'link' then <CommentLink comment={@props.data}/>
-                 when 'report' then <CommentReportForm />}
+                 when 'report' then <CommentReportForm comment={@props.data} />}
             </div>
           </div>
         else
@@ -163,9 +175,10 @@ module?.exports = React.createClass
             content={@props.data.body}
             validationCheck={@commentValidations}
             validationErrors={@state.commentValidationErrors}
-            submitFeedback={"Comment will update here..."}
+            submitFeedback={"Updated!"}
             submit={"Update Comment"}
             onCancelClick={@onCancelClick}
-            onSubmitComment={@onSubmitComment}/>}
+            onSubmitComment={@onSubmitComment}
+            user={@props.user} />}
       </div>
     </div>

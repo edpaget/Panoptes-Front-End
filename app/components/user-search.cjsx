@@ -1,15 +1,17 @@
 React = require 'react'
 Select = require 'react-select'
-PromiseRenderer = require './promise-renderer'
 apiClient = require '../api/client'
 debounce = require 'debounce'
 
 module.exports = React.createClass
   displayName: 'UserSearch'
 
+  getDefaultProps: ->
+    multi: true
+
   searchUsers: (value, callback) ->
     unless value is ''
-      apiClient.type('users').get display_name: value, page_size: 10
+      apiClient.type('users').get search: "#{value}", page_size: 10
         .then (users) =>
           opts = for user in users
             { value: user.id, label: "@#{ user.login }: #{ user.display_name }" }
@@ -19,10 +21,10 @@ module.exports = React.createClass
 
   render: ->
     <Select
-      multi={true}
+      multi={@props.multi}
       name="userids"
       placeholder="Username:"
-      searchPromptText="Type to Search Users"
-      className="user-search"
+      searchPromptText="Type to search Users"
+      className="search standard-input"
       closeAfterClick={true}
       asyncOptions={debounce(@searchUsers, 200)} />

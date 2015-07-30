@@ -16,6 +16,7 @@ NOOP = Function.prototype
 
 VALID_SUBJECT_EXTENSIONS = ['.jpg', '.png', '.gif', '.svg']
 INVALID_FILENAME_CHARS = ['/', '\\', ':']
+MAX_FILE_SIZE = 600000
 
 announceSetChange = ->
   apiClient.type('subject_sets').emit 'add-or-remove'
@@ -34,7 +35,7 @@ SubjectSetListingRow = React.createClass
   render: ->
     <tr key={@props.subject.id}>
       <td>
-        <small className="form-help">{@props.subject.id}</small>
+        <small className="form-help">{@props.subject.id}{"- #{@props.subject.metadata.Filename}" if @props.subject.metadata.Filename?}</small>
       </td>
       <td>
         <button type="button" disabled={@state.beingDeleted} onClick={@props.onPreview.bind null, @props.subject}><i className="fa fa-eye fa-fw"></i></button>
@@ -118,6 +119,7 @@ EditSubjectSetPage = React.createClass
 
   getInitialState: ->
     manifests: {}
+    tooBigFiles: {}
     files: {}
     deletionError: null
     deletionInProgress: false
@@ -129,15 +131,16 @@ EditSubjectSetPage = React.createClass
     <div>
       <p className="form-help">A subject is a unit of data to be analyzed. A subject can include one or more images that will be analyzed at the same time by volunteers. A subject set consists of a list of subjects (the “manifest”) defining their properties, and the images themselves.</p>
       <p className="form-help">Feel free to group subjects into sets in the way that is most useful for your research. Many projects will find it’s best to just have all their subjects in 1 set, but not all.</p>
+      <p className="form-help">You can upload up to 10,000 subjects. We recommend uploading subjects in batches of 500 - 1,000 at a time.</p>
 
       <form onSubmit={@handleSubmit}>
         <p>
           <AutoSave resource={@props.subjectSet}>
             <span className="form-label">Name</span>
             <br />
-            <input type="text" name="display_name" value={@props.subjectSet.display_name} className="standard-input full" onChange={handleInputChange.bind @props.subjectSet} />
+            <input type="text" name="display_name" placeholder="Subject Set Name" value={@props.subjectSet.display_name} className="standard-input full" onChange={handleInputChange.bind @props.subjectSet} />
           </AutoSave>
-          <small className="form-help">A subject set’s name is only seen by the science team.</small>
+          <small className="form-help">A subject set’s name is only seen by the research team.</small>
         </p>
       </form>
 
@@ -150,11 +153,10 @@ EditSubjectSetPage = React.createClass
 
       <p>
         <UploadDropTarget accept="text/csv, text/tab-separated-values, image/*" multiple onSelect={@handleFileSelection}>
-          <strong>Manifest files are required.</strong><br />
-          <strong>Drag-and-drop manifests and subject images here.</strong><br />
+          <strong>Drag-and-drop or click to upload manifests and subject images here.</strong><br />
           Manifests must be <code>.csv</code> or <code>.tsv</code>. The first row should define metadata headers. All other rows should include at least one reference to an image filename in the same directory as the manifest.<br />
-          Subject images can be any of: {<span key={ext}><code>{ext}</code>{', ' if VALID_SUBJECT_EXTENSIONS[i + 1]?}</span> for ext, i in VALID_SUBJECT_EXTENSIONS}{' '}
-          and may not contain {<span key={char}><kbd>{char}</kbd>{', ' if INVALID_FILENAME_CHARS[i + 1]?}</span> for char, i in INVALID_FILENAME_CHARS}.<br />
+          Subject images can be up to {MAX_FILE_SIZE/1000}KB and any of: {<span key={ext}><code>{ext}</code>{', ' if VALID_SUBJECT_EXTENSIONS[i + 1]?}</span> for ext, i in VALID_SUBJECT_EXTENSIONS}{' '} 
+          and may not contain {<span key={char}><kbd>{char}</kbd>{', ' if INVALID_FILENAME_CHARS[i + 1]?}</span> for char, i in INVALID_FILENAME_CHARS}<br />
         </UploadDropTarget>
       </p>
 
@@ -162,10 +164,10 @@ EditSubjectSetPage = React.createClass
         <ul>
           {subjectsToCreate = 0
           for name, {errors, subjects} of @state.manifests
-            {ready} = ManifestView.separateSubjects subjects, @state.files
+            {ready} = ManifestView.separateSubjects subjects, @state.files, @state.tooBigFiles
             subjectsToCreate += ready.length
             <li key={name}>
-              <ManifestView name={name} errors={errors} subjects={subjects} files={@state.files} onRemove={@handleRemoveManifest.bind this, name} />
+              <ManifestView name={name} errors={errors} tooBigFiles={@state.tooBigFiles} subjects={subjects} files={@state.files} onRemove={@handleRemoveManifest.bind this, name} />
             </li>}
         </ul>
 
@@ -212,8 +214,12 @@ EditSubjectSetPage = React.createClass
         @_addManifest file
         gotManifest = true
       else if file.type.indexOf('image/') is 0
-        @state.files[file.name] = file
-        gotFile = true
+        if file.size < MAX_FILE_SIZE
+          @state.files[file.name] = file
+          gotFile = true
+        else
+          @state.tooBigFiles[file.name] = file
+          gotFile = true
       else if file.type? # When Windows fails to detect MIME type and returns an empty string for file.type
         allowedFileExts = ['csv', 'tsv']
         ext = file.name.split('.').pop()
@@ -221,9 +227,14 @@ EditSubjectSetPage = React.createClass
           @_addManifest file
           gotManifest = true
 
+    unless gotManifest
+      autoManifest = []
+      for name, _ of @state.files
+        autoManifest.push { Filename: name }
+      for name, _ of @state.tooBigFiles
+        autoManifest.push { Filename: name }
 
-      if gotFile and not gotManifest
-        @forceUpdate()
+      @subjectsFromManifest(autoManifest, [], "AutoGeneratedManifest")
 
   _addManifest: (file) ->
     reader = new FileReader
@@ -231,23 +242,25 @@ EditSubjectSetPage = React.createClass
       # TODO: Look into PapaParse features.
       # Maybe wan we parse the file object directly in a worker.
       {data, errors} = Papa.parse e.target.result.trim(), header: true
-
-      metadatas = for rawData in data
-        cleanData = {}
-        for key, value of rawData
-          cleanData[key.trim()] = value?.trim?() ? value
-        cleanData
-
-      subjects = []
-      for metadata in metadatas
-        locations = @_findFilesInMetadata metadata
-        unless locations.length is 0
-          subjects.push {locations, metadata}
-
-      @state.manifests[file.name] = {errors, subjects}
-      @forceUpdate()
-
+      @subjectsFromManifest(data, errors, file.name)
     reader.readAsText file
+
+  subjectsFromManifest: (data, errors, fileName) ->
+    console.log(data, errors, fileName)
+    metadatas = for rawData in data
+      cleanData = {}
+      for key, value of rawData
+        cleanData[key.trim()] = value?.trim?() ? value
+      cleanData
+
+    subjects = []
+    for metadata in metadatas
+      locations = @_findFilesInMetadata metadata
+      unless locations.length is 0
+        subjects.push {locations, metadata}
+
+    @state.manifests[fileName] = {errors, subjects}
+    @forceUpdate()
 
   _findFilesInMetadata: (metadata) ->
     filesInMetadata = []
@@ -264,7 +277,7 @@ EditSubjectSetPage = React.createClass
   createSubjects: ->
     allSubjects = []
     for name, {subjects} of @state.manifests
-      {ready} = ManifestView.separateSubjects subjects, @state.files
+      {ready} = ManifestView.separateSubjects subjects, @state.files, @state.tooBigFiles
       allSubjects.push ready...
 
     uploadAlert = (resolve) =>

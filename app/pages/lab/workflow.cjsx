@@ -24,11 +24,29 @@ EditWorkflowPage = React.createClass
 
   getInitialState: ->
     selectedTaskKey: @props.workflow.first_task
+    forceReloader: 0
+
+  workflowLink: ->
+    [owner, name] = @props.project.slug.split('/')
+    # React-router completely overrides clicking on links. Unbelievable.
+    viewParams = owner: owner, name: name
+    viewQuery = workflow: @props.workflow.id
+    currentLocation = location.origin + location.pathname + location.search
+    currentLocation += if location.search is '' then '?' else '&'
+    currentLocation += "reload=#{@state.forceReloader}"
+    viewHash = @makeHref 'project-classify', viewParams, viewQuery
+    currentLocation + viewHash
 
   render: ->
-    <div>
+    disabledStyle =
+      opacity: 0.4
+      pointerEvents: 'none'
+
+    <div className="edit-workflow-page">
       <p className="form-help">A workflow is the sequence of tasks that you’re asking volunteers to perform. For example, you might want to ask volunteers to answer questions about your images, or to mark features in your images, or both.</p>
-      <div className="columns-container">
+      {if @props.project.live
+        <p className="form-help warning"><strong>You cannot edit a project’s workflows once it’s gone live.</strong></p>}
+      <div className="columns-container" style={disabledStyle if @props.project.live}>
         <div className="column">
           <div>
             <AutoSave tag="label" resource={@props.workflow}>
@@ -112,6 +130,12 @@ EditWorkflowPage = React.createClass
             <br />
             <small className="form-help">How many people should classify each subject before it is “done”? Once a subject has reached the retirement limit it will no longer be shown to any volunteers.</small>
           </p>
+
+          <hr />
+
+          <div style={pointerEvents: 'all'}>
+            <a href={@workflowLink()} className="standard-button" target="from-lab" onClick={@handleViewClick}>View this workflow</a>
+          </div>
 
           <hr />
 
@@ -210,10 +234,13 @@ EditWorkflowPage = React.createClass
       @transitionTo 'edit-project-details', projectID: @props.project.id
 
   handleTaskChange: (taskKey, path, value) ->
-    console?.log 'Handling task change', arguments...
     changes = {}
     changes["tasks.#{taskKey}.#{path}"] = value
     @props.workflow.update changes
+
+  handleViewClick: ->
+    setTimeout =>
+      @setState forceReloader: @state.forceReloader + 1
 
   handleTaskDelete: (taskKey) ->
     changes = {}
@@ -233,7 +260,6 @@ module.exports = React.createClass
   render: ->
     <PromiseRenderer promise={apiClient.type('workflows').get @props.params.workflowID}>{(workflow) =>
       <ChangeListener target={workflow}>{=>
-        console.log 'Workflow changed', JSON.stringify workflow
         <EditWorkflowPage {...@props} workflow={workflow} />
       }</ChangeListener>
     }</PromiseRenderer>

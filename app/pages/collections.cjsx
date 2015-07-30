@@ -2,9 +2,7 @@ counterpart = require 'counterpart'
 React = require 'react'
 TitleMixin = require '../lib/title-mixin'
 apiClient = require '../api/client'
-auth = require '../api/auth'
 OwnedCardList = require '../components/owned-card-list'
-PromiseRenderer = require '../components/promise-renderer'
 Translate = require 'react-translate-component'
 {Link} = require 'react-router'
 
@@ -22,32 +20,32 @@ CollectionsNav = React.createClass
 
   render: ->
     <nav className="hero-nav">
-      <PromiseRenderer promise={auth.checkCurrent()}>{(user) ->
-        if user?
-          <Link to="collections-user" params={{owner: user.login}}>
-            <Translate content="collectionsPage.myCollections" />
-          </Link>
-      }</PromiseRenderer>
+      {if @props.user?
+        <Link to="collections-user" params={{owner: @props.user.login}}>
+          <Translate content="collectionsPage.myCollections" />
+        </Link>}
     </nav>
 
 module.exports = React.createClass
   displayName: 'CollectionsPage'
-
   mixins: [TitleMixin]
-
   title: 'Collections'
 
   imagePromise: (collection) ->
     apiClient.type('subjects').get(collection_id: collection.id, page_size: 1)
-    .index(0)
-    .then (subject) ->
-      firstKey = Object.keys(subject.locations[0])[0]
-      subject.locations[0][firstKey]
+      .index(0)
+      .then (subject) ->
+        firstKey = Object.keys(subject.locations[0])[0]
+        subject.locations[0][firstKey]
+
+  cardLink: (collection) ->
+    'collection-show'
 
   listCollections: ->
-    query = Object.create @props.query ? {}
+    query = {}
     query.owner = @props.params.owner if @props.params?.owner?
     query.include = 'owner'
+    Object.assign query, @props.query
 
     apiClient.type('collections').get query
 
@@ -56,8 +54,8 @@ module.exports = React.createClass
       translationObjectName="collectionsPage"
       listPromise={@listCollections()}
       linkTo="collections"
-      heroNav={<CollectionsNav />}
+      heroNav={<CollectionsNav user={@props.user} />}
       heroClass="collections-hero"
       ownerName={@props.params?.owner}
       imagePromise={@imagePromise}
-      cardLink="collection-show" />
+      cardLink={@cardLink} />
